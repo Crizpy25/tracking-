@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Share Your Location</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #fff; border-radius: 20px;
+      border: 1px solid #e5e7eb;
+      padding: 2.5rem 2rem;
+      max-width: 420px; width: 100%;
+      text-align: center;
+    }
+    .icon-wrap {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: #eff6ff; display: flex;
+      align-items: center; justify-content: center;
+      margin: 0 auto 1.25rem;
+    }
+    h1 { font-size: 22px; font-weight: 700; color: #111827; margin-bottom: 8px; }
+    p  { font-size: 14px; color: #6b7280; line-height: 1.6; margin-bottom: 2rem; }
+    #share-btn {
+      width: 100%; padding: 15px;
+      background: #1d4ed8; color: #fff;
+      border: none; border-radius: 14px;
+      font-size: 16px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    #share-btn:hover { background: #1e40af; }
+    #share-btn:active { transform: scale(0.98); }
+    #share-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .status {
+      margin-top: 1.25rem; padding: 0.75rem 1rem;
+      border-radius: 10px; font-size: 13px; font-weight: 500; display: none;
+    }
+    .status.success { background: #d1fae5; color: #065f46; display: block; }
+    .status.error   { background: #fee2e2; color: #991b1b; display: block; }
+    .status.loading { background: #eff6ff; color: #1e40af; display: block; }
+    .coords { font-size: 12px; color: #6b7280; margin-top: 8px; font-family: monospace; }
+    .privacy { margin-top: 1.5rem; font-size: 11px; color: #9ca3af; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon-wrap">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2">
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+      <circle cx="12" cy="9" r="2.5"/>
+    </svg>
+  </div>
+  <h1>Share your location</h1>
+  <p>Tap the button below to send your current GPS location.</p>
+
+  <button id="share-btn" onclick="shareLocation()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+      <circle cx="12" cy="9" r="2.5"/>
+    </svg>
+    Send my location
+  </button>
+
+  <div class="status" id="status-msg"></div>
+  <div class="coords" id="coords-out"></div>
+  <p class="privacy">Your location is only used for tracking purposes and stored securely.</p>
+</div>
+
+<script>
+  // =====================================================
+  // SETUP: Get your free JSONBin credentials
+  // 1. Go to https://jsonbin.io and sign up free
+  // 2. Click "API Keys" → copy your Master Key
+  // 3. Create a new Bin with this JSON: {"locations":[]}
+  // 4. Copy the Bin ID from the URL
+  // 5. Paste both below:
+  // =====================================================
+  const JSONBIN_API_KEY  = '$2a$10$M8Zw/S4DRLolxrYThQUliOwjNCgSlOpcopt5B.zESnIYTGFeA4jQS';   // e.g. $2a$10$abc123...
+  const JSONBIN_BIN_ID   = '69eb4040aaba88219731ddf6';       // e.g. 664abc123def456
+
+  async function shareLocation() {
+    const btn    = document.getElementById('share-btn');
+    const status = document.getElementById('status-msg');
+    const coords = document.getElementById('coords-out');
+
+    if (!navigator.geolocation) {
+      showStatus('error', 'Geolocation not supported by your browser.');
+      return;
+    }
+
+    btn.disabled = true;
+    showStatus('loading', 'Getting your location...');
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude, longitude, accuracy, altitude } = pos.coords;
+      coords.textContent = `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)} (±${Math.round(accuracy)}m)`;
+      showStatus('loading', 'Sending location...');
+
+      try {
+        // 1. Read current bin data
+        const getRes = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+          headers: { 'X-Master-Key': JSONBIN_API_KEY }
+        });
+        const getData = await getRes.json();
+        const locations = getData.record.locations || [];
+
+        // 2. Append new location
+        locations.push({
+          latitude, longitude,
+          accuracy: Math.round(accuracy),
+          altitude: altitude ? Math.round(altitude) : null,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent
+        });
+
+        // 3. Save back to bin
+        await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Master-Key': JSONBIN_API_KEY
+          },
+          body: JSON.stringify({ locations })
+        });
+
+        showStatus('success', '✓ Location sent successfully! Thank you.');
+        btn.innerHTML = '✓ Location shared';
+      } catch (err) {
+        showStatus('error', 'Failed to send: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg> Send my location`;
+      }
+    }, (err) => {
+      const msgs = { 1: 'Location access denied.', 2: 'Location unavailable.', 3: 'Request timed out.' };
+      showStatus('error', msgs[err.code] || 'Unknown error.');
+      btn.disabled = false;
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+
+  function showStatus(type, msg) {
+    const el = document.getElementById('status-msg');
+    el.className = 'status ' + type;
+    el.textContent = msg;
+  }
+</script>
+</body>
+</html>
